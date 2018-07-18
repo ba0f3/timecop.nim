@@ -1,37 +1,73 @@
 import times, subhook
 
-proc timecop_getTime(): Time =
-  echo "hello from Timecop.getTime()"
 
-proc timecop_epochTime(): float =
-  echo "hello from Timecop.epochTime()"
+type
+  Timecop = object
+    secs: float
+    offset: float
+    locked: bool
+    travelling: bool
 
+proc timecop_getTime(): Time
+proc timecop_epochTime(): float
 
 var
-  hook_epochTime = initHook(epochTime, timecop_epochTime)
-  hook_getTime = initHook(getTime, timecop_getTime)
+  timecop = Timecop(secs: 0)
+  epochTimeHook = initHook(epochTime, timecop_epochTime)
+  getTimeHook = initHook(getTime, timecop_getTime)
 
 
+proc timecop_getTime(): Time =
+  if timecop.travelling:
+    getTimeHook.remove()
+    result = getTime() + initInterval(seconds=timecop.offset.int)
+    getTimeHook.install()
+  else:
+    result = timecop.secs.fromSeconds
+
+proc timecop_epochTime(): float =
+  if timecop.travelling:
+    epochTimeHook.remove()
+    result = epochTime() + timecop.offset
+    epochTimeHook.install()
+  else:
+    result = timecop.secs
 
 proc initTimecop() =
-  hook_epochTime.install()
-  hook_getTime.install()
+  timecop.locked = true
+  epochTimeHook.install()
+  getTimeHook.install()
 
 proc removeTimecop() =
-  hook_epochTime.remove()
-  hook_getTime.remove()
+  epochTimeHook.remove()
+  getTimeHook.remove()
+  timecop.locked = false
 
-when isMainModule:
+template freeze*(time: typed) =
+  if timecop.locked:
+    raise newException(SystemError, "Timecop is busy")
+
+  timecop.secs =
+    when time is int: time.float
+    elif time is float: time
+    elif time is Time: time.toSeconds
+    elif time is DateTime: time.toTime.toSeconds
   initTimecop()
-  let time = cpuTime()
 
-  #discard sleep(100)   # replace this with something to be timed
-  echo "Time taken: ",cpuTime() - time
+template unfreeze*() =
+  if timecop.locked:
+     removeTimecop()
 
-  echo "My formatted time: ", format(now(), "d MMMM yyyy HH:mm")
-  echo "Using predefined formats: ", getClockStr(), " ", getDateStr()
+template freezeAt*(time: typed, body: untyped) =
+  freeze(time)
+  body
+  unfreeze()
 
-  echo "epochTime() float value: ", epochTime()
-  echo "cpuTime()   float value: ", cpuTime()
-  echo "An hour from now      : ", now() + 1.hours
-  echo "An hour from (UTC) now: ", getTime().utc + initInterval(0,0,0,1)
+template travelTo*(time: typed, body: untyped) =
+  timecop.travelling = true
+  let secs = getTime().toSeconds
+  freeze(time)
+  timecop.offset = timecop.secs - secs
+  body
+  unfreeze()
+  timecop.travelling = false
