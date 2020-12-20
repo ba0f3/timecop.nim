@@ -20,10 +20,10 @@ var
 proc timecop_getTime(): Time =
   if timecop.travelling:
     getTimeHook.remove()
-    result = getTime() + initInterval(seconds=timecop.offset.int)
+    result = getTime() + initTimeInterval(seconds=timecop.offset.int)
     getTimeHook.install()
   else:
-    result = timecop.secs.fromSeconds
+    result = timecop.secs.fromUnixFloat
 
 proc timecop_epochTime(): float =
   if timecop.travelling:
@@ -45,13 +45,13 @@ proc removeTimecop() =
 
 template freeze*(time: typed) =
   if timecop.locked:
-    raise newException(SystemError, "Timecop is busy")
+    raise newException(IOError, "Timecop is busy")
 
   timecop.secs =
     when time is int: time.float
     elif time is float: time
     elif time is Time: time.toSeconds
-    elif time is DateTime: time.toTime.toSeconds
+    elif time is DateTime: time.toTime.toUnixFloat
   initTimecop()
 
 template unfreeze*() =
@@ -65,7 +65,7 @@ template freezeAt*(time: typed, body: untyped) =
 
 template travelTo*(time: typed, body: untyped) =
   timecop.travelling = true
-  let secs = getTime().toSeconds
+  let secs = getTime().toUnixFloat
   freeze(time)
   timecop.offset = timecop.secs - secs
   body

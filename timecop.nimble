@@ -8,4 +8,4 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 0.18.1", "subhook >= 0.1.1"
+requires "nim >= 1.2.0", "subhook >= 0.1.1"
